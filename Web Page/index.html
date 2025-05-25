@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Defect Detection System</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<!-- React & ReactDOM -->
+		<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+		<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+		<!-- Babel -->
+		<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+		<!-- TailwindCSS -->
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script>
+			tailwind.config = {
+				theme: {
+					extend: {
+						fontFamily: {
+							sans: ["Poppins", "sans-serif"],
+						},
+						colors: {
+							primary: "#ff4d6d", // Neon Red
+							secondary: "#7b2cbf", // Purple
+						},
+						animation: {
+							"spin-slow": "spin 8s linear infinite",
+							fadeIn: "fadeIn 0.5s ease-out forwards",
+						},
+						keyframes: {
+							fadeIn: {
+								"0%": {opacity: "0", transform: "translateY(10px)"},
+								"100%": {opacity: "1", transform: "translateY(0)"},
+							},
+						},
+					},
+				},
+			};
+		</script>
+
+		<!-- Google Fonts -->
+		<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
+	</head>
+
+	<body class="bg-gradient-to-br from-purple-900 via-black to-red-900 min-h-screen font-sans text-white">
+		<div id="root"></div>
+
+		<script type="text/babel">
+			function DefectDetectionApp() {
+				const [selectedImage, setSelectedImage] = React.useState(null);
+				const [imageResult, setImageResult] = React.useState(null);
+				const [showSettings, setShowSettings] = React.useState(false);
+				const [analysisText, setAnalysisText] = React.useState(null);
+				const cameraInputRef = React.useRef(null);
+				const handleImageUpload = async (event) => {
+					const file = event.target.files[0];
+
+					if (!file) return;
+
+					// Optional: Preview
+					const reader = new FileReader();
+					reader.onloadend = () => {
+						setSelectedImage(reader.result);
+					};
+					reader.readAsDataURL(file);
+
+					// Prepare FormData
+					const timeoutSignal = AbortSignal.timeout(5000);
+					const formData = new FormData();
+					await formData.append("image", file);
+					const response = await fetch("http://127.0.0.1:5000/predict", {
+						method: "POST",
+						body: formData,
+						signal: timeoutSignal,
+					});
+					if (response.ok) {
+						// Get the analysis result from the headers (X-Data)
+						let analysisResult = JSON.parse(response.headers.get("X-Data"));
+						const imageBlob = await response.blob();
+						const imageUrl = URL.createObjectURL(imageBlob);
+						setImageResult(imageUrl);
+						const entries = Object.entries(analysisResult || {});
+						const sorted = entries.sort((a, b) => b[1] - a[1]);
+						if (sorted) setAnalysisText(sorted);
+					} else {
+						console.error("Failed to fetch the image");
+					}
+				};
+				const mAP50_segment = 93;
+				const mAP50_defect_detect = 65;
+				return (
+					<div>
+						{/* Navbar */}
+						<nav className="bg-gradient-to-r from-primary to-secondary p-5 text-white shadow-lg">
+							<h1 className="text-3xl font-bold">Defect Detection System</h1>
+							<p className="text-sm mt-1">Upload or capture images to detect defects</p>
+						</nav>
+
+						<main className="p-8 space-y-8 max-w-6xl mx-auto">
+							{/* Image Input Section */}
+							<section className="bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md">
+								<h2 className="text-2xl font-semibold mb-6 text-primary">Image Input</h2>
+								<div className="border-2 border-dashed border-primary/40 p-8 rounded-lg text-center transition hover:border-primary">
+									{!selectedImage ? (
+										<p className="text-gray-300 mb-6">Upload an image or use your camera</p>
+									) : (
+										<img src={selectedImage} alt="Uploaded" className="mx-auto mb-6 max-h-72 object-contain rounded-xl shadow-md" />
+									)}
+
+									<div className="flex justify-center gap-12">
+										{/* Upload Button */}
+										<div className="flex flex-col items-center space-y-2">
+											<label className="w-24 h-24 flex items-center justify-center rounded-full bg-gradient-to-r from-primary to-secondary text-white text-4xl shadow-lg cursor-pointer hover:scale-110 transform transition">
+												⬆️
+												<input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+											</label>
+											<span className="text-primary font-medium">Upload</span>
+										</div>
+
+										{/* Camera Button */}
+										<div className="flex flex-col items-center space-y-2">
+											<label className="w-24 h-24 flex items-center justify-center rounded-full bg-gradient-to-r from-primary to-secondary text-white text-4xl shadow-lg cursor-pointer hover:scale-110 transform transition">
+												📷
+												<input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleImageUpload} style={{display: "none"}} />
+											</label>
+
+											<span className="text-green-400 font-medium">Camera</span>
+										</div>
+									</div>
+								</div>
+							</section>
+
+							{/* Analysis Results */}
+							<section className="bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md">
+								<h2 className="text-2xl font-semibold mb-6 text-primary">Analysis Results</h2>
+								<div className="border border-primary/30 p-8 rounded-lg text-center bg-black/20">
+									{imageResult ? (
+										analysisText.length > 0 ? (
+											<div>
+												<img src={imageResult} alt="Processed Image" className="mx-auto mb-6 max-h-72 object-contain rounded-xl shadow-md" />
+												<p className="text-red-400 font-bold text-xl animate-pulse">⚠️ Defect Detected!</p>
+												<p className="text-red-400 font-bold text-xl">Possible Causes:</p>
+												{analysisText.map(([label, value]) => (
+													<p key={label} className="text-red-400 font-bold text-xl">
+														{label}: {value.toFixed(2)}%
+													</p>
+												))}
+											</div>
+										) : (
+											<div>
+												<img src={imageResult} alt="Processed Image" className="mx-auto mb-6 max-h-72 object-contain rounded-xl shadow-md" />
+												<p className="text-green-400 font-bold text-xl animate-fadeIn">✅ No Defect Found</p>
+											</div>
+										)
+									) : (
+										<p className="text-gray-400">No results to display</p>
+									)}
+								</div>
+							</section>
+
+							{/* Statistics Section */}
+							<section className="bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md">
+								<h2 className="text-3xl font-bold mb-8 text-white">Mean Average Precision</h2>
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+									{/* Pie Chart */}
+									<div className="bg-black/30 p-6 rounded-2xl shadow-inner relative border border-secondary">
+										<h3 className="text-lg font-bold text-white mb-4">MAP50 Segmentation</h3>
+
+										<div className="flex flex-col items-center justify-center h-64">
+											<div className="relative w-40 h-40">
+												<svg className="w-full h-full transform -rotate-90 scale-y-[-1]">
+													<circle className="text-gray-700" strokeWidth="10" stroke="currentColor" fill="transparent" r="70" cx="80" cy="80" />
+													<circle
+														className="text-pink-500"
+														strokeWidth="10"
+														strokeDasharray={2 * Math.PI * 70}
+														strokeDashoffset={(1 - mAP50_segment / 100) * 2 * Math.PI * 70}
+														strokeLinecap="round"
+														stroke="currentColor"
+														fill="transparent"
+														r="70"
+														cx="80"
+														cy="80"
+													/>
+												</svg>
+												<div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+													<span className="text-3xl font-extrabold text-white">{mAP50_segment}%</span>
+												</div>
+											</div>
+											<p className="mt-6 text-white text-sm">YOLOv11-m Segmentation</p>
+										</div>
+									</div>
+									{/* Pie Chart */}
+									<div className="bg-black/30 p-6 rounded-2xl shadow-inner relative border border-secondary">
+										<h3 className="text-lg font-bold text-white mb-4">MAP50 Defect Detection</h3>
+
+										<div className="flex flex-col items-center justify-center h-64">
+											<div className="relative w-40 h-40">
+												<svg className="w-full h-full transform -rotate-90 scale-y-[-1]">
+													<circle className="text-gray-700" strokeWidth="10" stroke="currentColor" fill="transparent" r="70" cx="80" cy="80" />
+													<circle
+														className="text-blue-500"
+														strokeWidth="10"
+														strokeDasharray={2 * Math.PI * 70}
+														strokeDashoffset={(1 - mAP50_defect_detect / 100) * 2 * Math.PI * 70}
+														strokeLinecap="round"
+														stroke="currentColor"
+														fill="transparent"
+														r="70"
+														cx="80"
+														cy="80"
+													/>
+												</svg>
+												<div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+													<span className="text-3xl font-extrabold text-white">{mAP50_defect_detect}%</span>
+												</div>
+											</div>
+											<p className="mt-6 text-white text-sm">Overall Precision</p>
+										</div>
+									</div>
+								</div>
+							</section>
+
+							{/* How to Use Section */}
+							<section className="bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md">
+								<h2 className="text-2xl font-semibold mb-6 text-primary">How to Use</h2>
+								<ol className="list-decimal list-inside text-gray-300 space-y-3">
+									<li>Upload an image or capture using your camera</li>
+									<li>Adjust detection sensitivity if needed (optional)</li>
+									<li>Analyze the image to detect defects</li>
+									<li>Review the analysis results</li>
+									<li>Export results if necessary</li>
+								</ol>
+							</section>
+						</main>
+					</div>
+				);
+			}
+
+			const root = ReactDOM.createRoot(document.getElementById("root"));
+			root.render(<DefectDetectionApp />);
+		</script>
+	</body>
+</html>
